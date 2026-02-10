@@ -1,6 +1,6 @@
 ---
 name: csdn-publisher
-version: 2.1.0
+version: 2.2.0
 description: 写文章并发布到 CSDN。使用浏览器自动化 + 扫码登录。支持通过 Telegram 发送二维码，无需 VNC。集成 blog-writer 写作方法论，产出高质量、有个人风格的技术文章。
 ---
 
@@ -231,28 +231,54 @@ browser action=navigate targetUrl=https://passport.csdn.net/login
 browser action=screenshot  # 截取二维码发给用户
 ```
 
-#### Step 3: 注入标题和内容
+#### Step 3: 注入标题
 
-```javascript
-// 通过 browser act evaluate 执行
-// 输入标题
-const input = document.querySelector('input.article-bar__title');
-input.value = '你的标题';
-input.dispatchEvent(new Event('input', { bubbles: true }));
+使用 browser 工具的 `type` 操作：
 
-// 注入内容
-const content = `你的 Markdown 内容`;
-const editor = document.querySelector('.editor__inner');
-editor.textContent = content;
-editor.dispatchEvent(new Event('input', { bubbles: true }));
+```
+browser action=snapshot  → 找到标题输入框的 ref（通常是 textbox "请输入文章标题"）
+browser action=act request={kind: "click", ref: "<标题ref>"}
+browser action=act request={kind: "type", ref: "<标题ref>", text: "你的标题"}
 ```
 
-#### Step 4: 发布
+#### Step 4: 注入内容（⚠️ 关键步骤）
 
-1. 点击"发布文章"按钮
-2. 在弹窗中添加标签（必填）
-3. 确认发布
-4. 验证成功（检查是否跳转到成功页面）
+CSDN 使用 cledit 编辑器（contentEditable），**不能**用以下方法：
+- ❌ `browser evaluate` 嵌入长字符串 → 参数长度限制
+- ❌ `document.execCommand('insertText')` → 换行符不被 cledit 识别
+- ❌ `navigator.clipboard` → headless Chrome 无权限
+- ❌ HTTP server + fetch → CORS/混合内容拦截
+
+**✅ 正确方案：使用 `scripts/inject-content.js` 通过 CDP 注入**
+
+```bash
+# 前置：确保 ws 模块已安装
+cd /root/.openclaw/workspace/skills/csdn-publisher
+npm install ws 2>/dev/null
+
+# 注入内容（自动跳过 frontmatter）
+node scripts/inject-content.js /tmp/csdn-article-YYYY-MM-DD.md
+```
+
+脚本原理：
+1. 通过 CDP `/json` 找到 CSDN 编辑器 tab
+2. 用 `Runtime.evaluate` + `JSON.stringify(content)` 将内容存入 `window` 变量（绕过长度限制）
+3. 用 `editor.textContent = content` + `dispatchEvent('input')` 注入（cledit 兼容）
+4. 自动验证注入结果（字数、行数）
+
+**注意：** 运行脚本前必须先用 browser 工具打开 CSDN 编辑器页面。
+
+#### Step 5: 发布
+
+```
+browser action=snapshot  → 找到"发布文章"按钮的 ref
+browser action=act request={kind: "click", ref: "<发布按钮ref>"}
+browser action=snapshot  → 检查发布对话框
+  - 确认标签已添加（必填）
+  - 文章类型选"原创"
+browser action=act request={kind: "click", ref: "<对话框中的发布按钮ref>"}
+browser action=snapshot  → 验证"发布成功！正在审核中"
+```
 
 ---
 
@@ -353,7 +379,8 @@ csdn-publisher/
 ├── examples/             # 示例文章库
 │   └── *.md              # 示例文章（YYYY-MM-DD-slug.md）
 └── scripts/
-    └── login.py          # 扫码登录脚本
+    ├── login.py          # 扫码登录脚本
+    └── inject-content.js # CDP 内容注入脚本（核心）
 ```
 
 ---
@@ -449,6 +476,7 @@ nohup python scripts/login.py login --timeout 300 --notify > /tmp/csdn-login.log
 
 ## Changelog
 
+- **v2.2.0**: 固化 CDP 内容注入方案（scripts/inject-content.js），替换不可靠的 browser evaluate 方法
 - **v2.1.0**: 添加容错与重试策略（内容落盘、健康检查、自动重试、兜底通知）
 - **v2.0.0**: 集成 blog-writer 写作方法论，添加中文风格指南，重构工作流
 - **v1.3.0**: 添加登录成功自动 Telegram 通知功能
