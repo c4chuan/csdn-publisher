@@ -1,6 +1,6 @@
 ---
 name: csdn-publisher
-version: 2.0.0
+version: 2.1.0
 description: 写文章并发布到 CSDN。使用浏览器自动化 + 扫码登录。支持通过 Telegram 发送二维码，无需 VNC。集成 blog-writer 写作方法论，产出高质量、有个人风格的技术文章。
 ---
 
@@ -256,6 +256,94 @@ editor.dispatchEvent(new Event('input', { bubbles: true }));
 
 ---
 
+## 🛡️ 容错与重试策略（v2.1 新增）
+
+浏览器自动化容易因网络、服务中断等原因失败。以下策略确保内容不丢失、发布可重试。
+
+### 原则：先存内容，再发布
+
+**内容创作是昂贵的（搜索+写作），发布是廉价的（浏览器操作）。必须先把内容落盘，再尝试发布。**
+
+### Step 1: 内容落盘（发布前必做）
+
+在尝试浏览器发布之前，**必须**将文章保存到本地文件：
+
+```
+/tmp/csdn-article-YYYY-MM-DD.md
+```
+
+文件格式：
+```markdown
+---
+title: 文章标题
+date: YYYY-MM-DD
+tags: [标签1, 标签2]
+status: draft | published
+csdn_url: (发布成功后回填)
+---
+
+文章正文 Markdown 内容...
+```
+
+这样即使发布失败，文章内容也不会丢失，可以随时重试。
+
+### Step 2: 浏览器健康检查（发布前必做）
+
+在打开 CSDN 编辑器之前，先确认浏览器服务可用：
+
+```
+1. browser action=start profile=openclaw
+2. browser action=snapshot profile=openclaw
+```
+
+如果 `start` 或 `snapshot` 返回错误：
+- **不要继续发布流程**
+- 跳到 Step 4（兜底通知）
+
+### Step 3: 失败后自动重试（最多 1 次）
+
+如果发布过程中浏览器操作失败：
+
+```
+1. browser action=stop profile=openclaw     # 关闭浏览器
+2. 等待 5 秒
+3. browser action=start profile=openclaw    # 重启浏览器
+4. 重新执行发布流程（从打开编辑器开始）
+5. 只重试 1 次，避免无限循环
+```
+
+**注意：只重试发布步骤，不重跑内容创作。** 从本地文件 `/tmp/csdn-article-YYYY-MM-DD.md` 读取已保存的内容。
+
+### Step 4: 兜底通知
+
+如果重试后仍然失败：
+
+1. 更新本地文件的 `status: failed`
+2. 向用户发送通知，包含：
+   - 失败原因
+   - 文章标题
+   - 提示：文章已保存在 `/tmp/csdn-article-YYYY-MM-DD.md`，可以手动触发重新发布
+
+### 完整发布流程（含容错）
+
+```
+内容创作完成
+    ↓
+保存到 /tmp/csdn-article-YYYY-MM-DD.md  ← 落盘
+    ↓
+browser start + snapshot  ← 健康检查
+    ↓ (失败 → 跳到兜底通知)
+打开编辑器 → 注入内容 → 发布
+    ↓ (失败)
+browser stop → 等 5s → browser start  ← 重试
+    ↓
+重新打开编辑器 → 注入内容 → 发布
+    ↓ (仍然失败)
+发送失败通知 + 文章保存路径  ← 兜底
+```
+
+---
+
 ## 📁 目录结构
 
 ```
@@ -361,6 +449,7 @@ nohup python scripts/login.py login --timeout 300 --notify > /tmp/csdn-login.log
 
 ## Changelog
 
+- **v2.1.0**: 添加容错与重试策略（内容落盘、健康检查、自动重试、兜底通知）
 - **v2.0.0**: 集成 blog-writer 写作方法论，添加中文风格指南，重构工作流
 - **v1.3.0**: 添加登录成功自动 Telegram 通知功能
 - **v1.2.0**: 完善 Telegram 二维码发送流程，添加完整工作流示例
