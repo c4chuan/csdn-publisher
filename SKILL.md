@@ -1,6 +1,6 @@
 ---
 name: csdn-publisher
-version: 2.3.0
+version: 2.4.2
 description: 写文章并发布到 CSDN。使用浏览器自动化 + 扫码登录。支持通过 Telegram 发送二维码，无需 VNC。集成 blog-writer 写作方法论，产出高质量、有个人风格的技术文章。
 ---
 
@@ -508,6 +508,9 @@ nohup python scripts/login.py login --timeout 300 --notify > /tmp/csdn-login.log
 
 ## Changelog
 
+- **v2.4.2**: 撤回 SKILL.md 中关于 Gemini 生图/自动配图的流程描述，恢复为纯写作与发布工作流
+- **v2.4.1**: 默认生图模型切换为 `gemini-3.1-flash-image-preview`
+- **v2.4.0**: 集成 Gemini 生图能力，新增 `scripts/gemini_generate_image.py` 和 `references/gemini-image.md`，支持在写文章阶段主动建议并生成配图/头图
 - **v2.3.0**: 新增新闻去重功能（notion-query-recent.sh + notion-check-duplicate.sh），支持 URL 精确匹配和语义重复判断
 - **v2.2.0**: 固化 CDP 内容注入方案（scripts/inject-content.js），替换不可靠的 browser evaluate 方法
 - **v2.1.0**: 添加容错与重试策略（内容落盘、健康检查、自动重试、兜底通知）
